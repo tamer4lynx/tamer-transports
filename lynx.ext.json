@@ -1,0 +1,16 @@
+{
+  "platforms": {
+    "android": {
+      "packageName": "com.nanofuxion.tamertransports",
+      "moduleClassNames": [
+        "com.nanofuxion.tamertransports.LynxFetchModule",
+        "com.nanofuxion.tamertransports.LynxWebSocketModule"
+      ],
+      "sourceDir": "android"
+    },
+    "ios": {
+      "podspecPath": "ios/tamertransports",
+      "moduleClassNames": ["LynxFetchModule", "LynxWebSocketModule"]
+    }
+  }
+}
