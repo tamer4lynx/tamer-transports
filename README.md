@@ -5,7 +5,7 @@ Browser-compliant fetch, WebSocket, and EventSource (SSE) for Lynx with embedded
 ## Installation
 
 ```bash
-npm install tamer-transports
+npm install @tamer4lynx/tamer-transports
 ```
 
 Add to your app's dependencies and run `t4l link`. **Required for HMR and WebSocket** in native Lynx apps.
@@ -13,7 +13,7 @@ Add to your app's dependencies and run `t4l link`. **Required for HMR and WebSoc
 ## Usage
 
 ```ts
-import { fetch, WebSocket, EventSource } from 'tamer-transports'
+import { fetch, WebSocket, EventSource } from '@tamer4lynx/tamer-transports'
 
 // Fetch (native implementation)
 const res = await fetch('https://api.example.com/data')
@@ -33,11 +33,11 @@ es.onmessage = (e) => console.log(e.data)
 
 | Export | Description |
 |--------|-------------|
-| `fetch` | Native fetch polyfill |
-| `WebSocket` | Native WebSocket polyfill |
-| `EventSource` | Native EventSource (SSE) polyfill |
+| `fetch` | Polyfill that attempts to meet the browser-standard fetch API (Lynx’s stock fetch does not) |
+| `WebSocket` | Polyfill that attempts to meet the browser-standard WebSocket API |
+| `EventSource` | Polyfill that attempts to meet the browser-standard EventSource API |
 
-These replace the default implementations when the host does not provide them, enabling HMR, WebSocket, and SSE in Lynx native apps.
+These replace the default implementations when the host does not provide them, enabling HMR, WebSocket, and SSE in Lynx native apps. **Not fully tested** — report issues on GitHub.
 
 ## Platform
 
