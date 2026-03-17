@@ -6,16 +6,24 @@ import android.util.Log
 import com.lynx.jsbridge.LynxMethod
 import com.lynx.jsbridge.LynxModule
 import com.lynx.react.bridge.Callback
+import com.lynx.react.bridge.JavaOnlyArray
+import com.lynx.react.bridge.JavaOnlyMap
+import com.lynx.tasm.behavior.LynxContext
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.Call
+import okhttp3.Callback as OkHttpCallback
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
 import org.json.JSONObject
 import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
 
 class LynxFetchModule(context: Context) : LynxModule(context) {
 
     private val client = OkHttpClient()
+    private val activeCalls = ConcurrentHashMap<Int, Call>()
 
     companion object {
         private const val TAG = "LynxFetchModule"
@@ -44,6 +52,8 @@ class LynxFetchModule(context: Context) : LynxModule(context) {
             val headers = options.optJSONObject("headers")
             val bodyStr = options.optString("body", "")
             val bodyBase64 = options.optString("bodyBase64", "")
+            val stream = options.optBoolean("stream", false)
+            val requestId = options.optInt("requestId", -1)
 
             val builder = Request.Builder().url(url)
 
@@ -74,8 +84,54 @@ class LynxFetchModule(context: Context) : LynxModule(context) {
             builder.method(method, requestBody)
 
             val request = builder.build()
+            val call = client.newCall(request)
+            if (stream && requestId >= 0) {
+                activeCalls[requestId] = call
+                call.enqueue(object : OkHttpCallback {
+                    override fun onFailure(call: Call, e: IOException) {
+                        activeCalls.remove(requestId)
+                        callback.invoke(JSONObject().apply {
+                            put("event", "error")
+                            put("message", e.message ?: "Network error")
+                        }.toString())
+                    }
 
-            client.newCall(request).execute().use { response ->
+                    override fun onResponse(call: Call, response: Response) {
+                        activeCalls.remove(requestId)
+                        response.use {
+                            val headersObj = JSONObject()
+                            response.headers.forEach { (name, value) ->
+                                headersObj.put(name, value)
+                            }
+                            callback.invoke(JSONObject().apply {
+                                put("event", "headers")
+                                put("ok", response.isSuccessful)
+                                put("status", response.code)
+                                put("statusText", response.message)
+                                put("headers", headersObj)
+                            }.toString())
+
+                            val streamBody = response.body?.byteStream() ?: run {
+                                callback.invoke(JSONObject().put("event", "end").toString())
+                                return
+                            }
+                            val buffer = ByteArray(8192)
+                            while (true) {
+                                val read = streamBody.read(buffer)
+                                if (read <= 0) break
+                                callback.invoke(JSONObject().apply {
+                                    put("event", "chunk")
+                                    put("dataBase64", Base64.encodeToString(buffer.copyOf(read), Base64.NO_WRAP))
+                                }.toString())
+                            }
+                            callback.invoke(JSONObject().put("event", "end").toString())
+                        }
+                    }
+                })
+                return
+            }
+
+            call.execute().use { response ->
                 val contentType = response.header("Content-Type")
                 val rawBody = response.body?.bytes()
                 val headersObj = JSONObject()
@@ -105,5 +161,10 @@ class LynxFetchModule(context: Context) : LynxModule(context) {
             val errorResult = JSONObject().apply { put("error", e.message ?: "Unknown error") }
             callback.invoke(errorResult.toString())
         }
+    }
+
+    @LynxMethod
+    fun cancel(requestId: Int) {
+        activeCalls.remove(requestId)?.cancel()
     }
 }

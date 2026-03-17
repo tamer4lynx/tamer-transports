@@ -3,6 +3,7 @@
 declare const NativeModules: {
   LynxFetchModule?: {
     request(url: string, optionsJson: string, callback: (resultJson: string) => void): void
+    cancel?(requestId: number): void
   }
 }
 
@@ -45,6 +46,15 @@ export function installFetchPolyfill() {
   const mod = NativeModules?.LynxFetchModule
   if (!mod) return
 
+  let nextRequestId = 1
+
+  function shouldStream(headersObj: Record<string, string>, opts: RequestInit): boolean {
+    const streamFlag = (opts as RequestInit & { stream?: boolean }).stream === true
+    if (streamFlag) return true
+    const accept = Object.entries(headersObj).find(([k]) => k.toLowerCase() === 'accept')?.[1]
+    return typeof accept === 'string' && accept.toLowerCase().includes('text/event-stream')
+  }
+
   const nativeFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url
     const opts = init ?? {}
@@ -62,25 +72,114 @@ export function installFetchPolyfill() {
       headers: headersObj,
       ...bodyPayload,
     }
+    const stream = shouldStream(headersObj, opts)
 
     return new Promise((resolve, reject) => {
-      mod!.request(url, JSON.stringify(options), (resultJson: string) => {
+      const requestId = nextRequestId++
+      const onAbort = () => mod?.cancel?.(requestId)
+      opts.signal?.addEventListener?.('abort', onAbort)
+      const cleanup = () => opts.signal?.removeEventListener?.('abort', onAbort)
+
+      if (!stream) {
+        mod!.request(url, JSON.stringify(options), (resultJson: string) => {
+          try {
+            const result = JSON.parse(resultJson)
+            if (result.error) {
+              cleanup()
+              reject(new Error(result.error))
+              return
+            }
+            const bodyInit = result.bodyBase64 != null
+              ? base64ToArrayBuffer(result.bodyBase64)
+              : (result.body ?? '')
+            const res = new Response(bodyInit, {
+              status: result.status,
+              statusText: result.statusText,
+              headers: result.headers ?? {},
+            })
+            cleanup()
+            resolve(res)
+          } catch (e) {
+            cleanup()
+            reject(e)
+          }
+        })
+        return
+      }
+
+      let controller: ReadableStreamDefaultController<Uint8Array> | null = null
+      let settled = false
+      const bodyStream = new ReadableStream<Uint8Array>({
+        start(ctrl) {
+          controller = ctrl
+        },
+        cancel() {
+          mod?.cancel?.(requestId)
+          cleanup()
+        },
+      })
+
+      const streamOptions = {
+        ...options,
+        stream: true,
+        requestId,
+      }
+
+      mod!.request(url, JSON.stringify(streamOptions), (resultJson: string) => {
         try {
           const result = JSON.parse(resultJson)
           if (result.error) {
-            reject(new Error(result.error))
+            cleanup()
+            if (!settled) {
+              settled = true
+              reject(new Error(result.error))
+            } else {
+              controller?.error(new Error(result.error))
+            }
             return
           }
-          const bodyInit = result.bodyBase64 != null
-            ? base64ToArrayBuffer(result.bodyBase64)
-            : (result.body ?? '')
-          const res = new Response(bodyInit, {
-            status: result.status,
-            statusText: result.statusText,
-            headers: result.headers ?? {},
-          })
-          resolve(res)
+
+          switch (result.event) {
+            case 'headers': {
+              if (settled) return
+              settled = true
+              const res = new Response(bodyStream, {
+                status: result.status,
+                statusText: result.statusText,
+                headers: result.headers ?? {},
+              })
+              resolve(res)
+              return
+            }
+            case 'chunk': {
+              if (result.dataBase64 != null) {
+                controller?.enqueue(new Uint8Array(base64ToArrayBuffer(result.dataBase64)))
+              } else if (typeof result.data === 'string') {
+                const bytes = new Uint8Array(result.data.length)
+                for (let i = 0; i < result.data.length; i++) bytes[i] = result.data.charCodeAt(i)
+                controller?.enqueue(bytes)
+              }
+              return
+            }
+            case 'end': {
+              cleanup()
+              controller?.close()
+              return
+            }
+            case 'error': {
+              cleanup()
+              const error = new Error(result.message ?? 'Streaming request failed')
+              if (!settled) {
+                settled = true
+                reject(error)
+              } else {
+                controller?.error(error)
+              }
+              return
+            }
+          }
         } catch (e) {
+          cleanup()
           reject(e)
         }
       })
