@@ -10,8 +10,23 @@ public final class LynxFetchModule: NSObject, LynxModule {
         ["request": NSStringFromSelector(#selector(request(_:optionsJson:callback:)))]
     }
 
+    private static let binaryPrefixes = [
+        "application/octet-stream",
+        "application/pdf",
+        "application/dns-message",
+        "application/wasm",
+        "image/",
+        "audio/",
+        "video/",
+    ]
+
     @objc public init(param: Any) { super.init() }
     @objc public override init() { super.init() }
+
+    private func isBinaryContentType(_ contentType: String?) -> Bool {
+        guard let ct = contentType else { return false }
+        return Self.binaryPrefixes.contains { ct.hasPrefix($0) }
+    }
 
     @objc func request(_ url: String, optionsJson: String, callback: @escaping (String) -> Void) {
         guard let urlObj = URL(string: url) else {
@@ -27,13 +42,18 @@ public final class LynxFetchModule: NSObject, LynxModule {
 
         let method = (options["method"] as? String)?.uppercased() ?? "GET"
         let headers = options["headers"] as? [String: String] ?? [:]
-        let body = options["body"] as? String
+        let bodyStr = options["body"] as? String
+        let bodyBase64 = options["bodyBase64"] as? String
 
         var request = URLRequest(url: urlObj)
         request.httpMethod = method
         for (key, value) in headers { request.setValue(value, forHTTPHeaderField: key) }
-        if let body = body, !["GET", "HEAD"].contains(method) {
-            request.httpBody = body.data(using: .utf8)
+        if !["GET", "HEAD"].contains(method) {
+            if let base64 = bodyBase64, !base64.isEmpty, let bodyData = Data(base64Encoded: base64) {
+                request.httpBody = bodyData
+            } else if let body = bodyStr {
+                request.httpBody = body.data(using: .utf8)
+            }
         }
 
         URLSession.shared.dataTask(with: request) { data, response, error in
@@ -45,7 +65,7 @@ public final class LynxFetchModule: NSObject, LynxModule {
             let httpResponse = response as? HTTPURLResponse
             let status = httpResponse?.statusCode ?? 0
             let statusText = HTTPURLResponse.localizedString(forStatusCode: status)
-            let bodyStr = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+            let contentType = httpResponse?.value(forHTTPHeaderField: "Content-Type")
 
             var headersObj: [String: String] = [:]
             if let resp = httpResponse {
@@ -54,13 +74,17 @@ public final class LynxFetchModule: NSObject, LynxModule {
                 }
             }
 
-            let result: [String: Any] = [
+            var result: [String: Any] = [
                 "ok": (200...299).contains(status),
                 "status": status,
                 "statusText": statusText,
                 "headers": headersObj,
-                "body": bodyStr
             ]
+            if let data = data, !data.isEmpty, self.isBinaryContentType(contentType) {
+                result["bodyBase64"] = data.base64EncodedString()
+            } else {
+                result["body"] = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+            }
             callback(self.createJSONString(result))
         }.resume()
     }

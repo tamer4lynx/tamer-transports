@@ -24,14 +24,20 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary)
 }
 
-type WSHandlers = {
+type WebSocketInstance = {
+  readyState: number
   onopen: (() => void) | null
   onmessage: ((ev: { data: string | ArrayBuffer }) => void) | null
   onerror: ((e: Error) => void) | null
   onclose: ((ev: { code: number; reason: string }) => void) | null
 }
 
-const webSockets = new Map<number, WSHandlers>()
+const CONNECTING = 0
+const OPEN = 1
+const CLOSING = 2
+const CLOSED = 3
+
+const webSockets = new Map<number, WebSocketInstance>()
 let nextId = 1
 
 export function installWebSocketPolyfill() {
@@ -43,7 +49,10 @@ export function installWebSocketPolyfill() {
   bridge.addListener('websocket:open', (event: { payload?: string }) => {
     const { id } = JSON.parse(event.payload ?? '{}')
     const ws = webSockets.get(id)
-    if (ws?.onopen) ws.onopen()
+    if (ws) {
+      ws.readyState = OPEN
+      if (ws.onopen) ws.onopen()
+    }
   })
 
   bridge.addListener('websocket:message', (event: { payload?: string }) => {
@@ -57,19 +66,32 @@ export function installWebSocketPolyfill() {
   bridge.addListener('websocket:error', (event: { payload?: string }) => {
     const { id, message } = JSON.parse(event.payload ?? '{}')
     const ws = webSockets.get(id)
-    if (ws?.onerror) ws.onerror(new Error(message))
+    if (ws) {
+      ws.readyState = CLOSED
+      if (ws.onerror) ws.onerror(new Error(message))
+    }
+    webSockets.delete(id)
   })
 
   bridge.addListener('websocket:close', (event: { payload?: string }) => {
     const { id, code, reason } = JSON.parse(event.payload ?? '{}')
     const ws = webSockets.get(id)
-    if (ws?.onclose) ws.onclose({ code, reason })
+    if (ws) {
+      ws.readyState = CLOSED
+      if (ws.onclose) ws.onclose({ code, reason })
+    }
     webSockets.delete(id)
   })
 
   const WebSocketPolyfill = class WebSocket {
+    static readonly CONNECTING = CONNECTING
+    static readonly OPEN = OPEN
+    static readonly CLOSING = CLOSING
+    static readonly CLOSED = CLOSED
+
     id: number
     url: string
+    readyState: number = CONNECTING
     onopen: (() => void) | null = null
     onmessage: ((ev: { data: string | ArrayBuffer }) => void) | null = null
     onerror: ((e: Error) => void) | null = null
@@ -91,7 +113,10 @@ export function installWebSocketPolyfill() {
     }
 
     close(code = 1000, reason = 'Normal closure') {
-      mod!.close(this.id, code, reason)
+      if (this.readyState === CONNECTING || this.readyState === OPEN) {
+        this.readyState = CLOSING
+        mod!.close(this.id, code, reason)
+      }
     }
   }
 

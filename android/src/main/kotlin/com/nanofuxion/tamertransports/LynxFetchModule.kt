@@ -1,6 +1,7 @@
 package com.nanofuxion.tamertransports
 
 import android.content.Context
+import android.util.Base64
 import android.util.Log
 import com.lynx.jsbridge.LynxMethod
 import com.lynx.jsbridge.LynxModule
@@ -18,6 +19,20 @@ class LynxFetchModule(context: Context) : LynxModule(context) {
 
     companion object {
         private const val TAG = "LynxFetchModule"
+        private val BINARY_TYPES = setOf(
+            "application/octet-stream",
+            "application/pdf",
+            "application/dns-message",
+            "application/wasm",
+            "image/",
+            "audio/",
+            "video/",
+        )
+    }
+
+    private fun isBinaryContentType(contentType: String?): Boolean {
+        if (contentType == null) return false
+        return BINARY_TYPES.any { contentType.startsWith(it) }
     }
 
     @LynxMethod
@@ -27,7 +42,8 @@ class LynxFetchModule(context: Context) : LynxModule(context) {
             val options = JSONObject(optionsJson)
             val method = options.optString("method", "GET").uppercase()
             val headers = options.optJSONObject("headers")
-            val body = options.optString("body", "")
+            val bodyStr = options.optString("body", "")
+            val bodyBase64 = options.optString("bodyBase64", "")
 
             val builder = Request.Builder().url(url)
 
@@ -39,19 +55,29 @@ class LynxFetchModule(context: Context) : LynxModule(context) {
                 }
             }
 
-            when (method) {
-                "GET", "HEAD" -> builder.method(method, null)
+            val requestBody = when (method) {
+                "GET", "HEAD" -> null
                 else -> {
-                    val contentType = headers?.optString("Content-Type") ?: "text/plain; charset=utf-8"
-                    val requestBody = body.toRequestBody(contentType.toMediaType())
-                    builder.method(method, requestBody)
+                    when {
+                        bodyBase64.isNotEmpty() -> {
+                            val contentType = headers?.optString("Content-Type") ?: "application/octet-stream"
+                            val bytes = Base64.decode(bodyBase64, Base64.NO_WRAP)
+                            okhttp3.RequestBody.create(contentType.toMediaType(), bytes)
+                        }
+                        else -> {
+                            val contentType = headers?.optString("Content-Type") ?: "text/plain; charset=utf-8"
+                            bodyStr.toRequestBody(contentType.toMediaType())
+                        }
+                    }
                 }
             }
+            builder.method(method, requestBody)
 
             val request = builder.build()
 
             client.newCall(request).execute().use { response ->
-                val bodyStr = response.body?.string() ?: ""
+                val contentType = response.header("Content-Type")
+                val rawBody = response.body?.bytes()
                 val headersObj = JSONObject()
                 response.headers.forEach { (name, value) ->
                     headersObj.put(name, value)
@@ -62,7 +88,11 @@ class LynxFetchModule(context: Context) : LynxModule(context) {
                     put("status", response.code)
                     put("statusText", response.message)
                     put("headers", headersObj)
-                    put("body", bodyStr)
+                }
+                if (rawBody != null && rawBody.isNotEmpty() && isBinaryContentType(contentType)) {
+                    result.put("bodyBase64", Base64.encodeToString(rawBody, Base64.NO_WRAP))
+                } else {
+                    result.put("body", rawBody?.toString(Charsets.UTF_8) ?: "")
                 }
                 callback.invoke(result.toString())
             }
