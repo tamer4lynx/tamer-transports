@@ -3,7 +3,7 @@ import Lynx
 import Network
 
 @objcMembers
-public final class LynxWebSocketModule: NSObject, LynxModule {
+public final class LynxWebSocketModule: NSObject, LynxModule, URLSessionWebSocketDelegate {
 
     @objc public static var name: String { "LynxWebSocketModule" }
 
@@ -20,6 +20,7 @@ public final class LynxWebSocketModule: NSObject, LynxModule {
 
     private var webSockets: [Int: URLSessionWebSocketTask] = [:]
     private var urlSessions: [Int: URLSession] = [:]
+    private var taskToId: [URLSessionWebSocketTask: Int] = [:]
     private let queue = DispatchQueue(label: "com.tamertransports.websocket", qos: .default)
     private weak var lynxContext: LynxContext?
 
@@ -42,14 +43,28 @@ public final class LynxWebSocketModule: NSObject, LynxModule {
 
         queue.async { [weak self] in
             guard let self = self else { return }
-            let session = URLSession(configuration: .default)
+            let config = URLSessionConfiguration.default
+            let session = URLSession(configuration: config, delegate: self, delegateQueue: nil)
             let webSocketTask = session.webSocketTask(with: websocketURL)
             self.webSockets[id] = webSocketTask
             self.urlSessions[id] = session
+            self.taskToId[webSocketTask] = id
             webSocketTask.resume()
-            self.emitOpen(id: id)
             self.startReceiving(webSocketTask: webSocketTask, id: id)
         }
+    }
+
+    public func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
+        guard let id = taskToId[webSocketTask] else { return }
+        emitOpen(id: id)
+    }
+
+    public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        guard let wsTask = task as? URLSessionWebSocketTask, let id = taskToId[wsTask], let err = error else { return }
+        if (err as? URLError)?.code != .cancelled {
+            emitError(id: id, message: err.localizedDescription)
+        }
+        cleanup(id: id)
     }
 
     @objc func send(_ id: Int, message: String) {
@@ -102,6 +117,9 @@ public final class LynxWebSocketModule: NSObject, LynxModule {
     }
 
     private func cleanup(id: Int) {
+        if let task = webSockets[id] {
+            taskToId.removeValue(forKey: task)
+        }
         webSockets.removeValue(forKey: id)
         urlSessions.removeValue(forKey: id)
     }

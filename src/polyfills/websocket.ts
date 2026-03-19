@@ -41,8 +41,9 @@ const webSockets = new Map<number, WebSocketInstance>()
 let nextId = 1
 
 export function installWebSocketPolyfill() {
-  const mod = NativeModules?.LynxWebSocketModule
-  if (!mod) return
+  function tryInstall() {
+    const mod = NativeModules?.LynxWebSocketModule
+    if (!mod) return false
 
   const bridge = lynx.getJSModule('GlobalEventEmitter')
 
@@ -120,5 +121,14 @@ export function installWebSocketPolyfill() {
     }
   }
 
-  ;(globalThis as unknown as Record<string, unknown>).WebSocket = WebSocketPolyfill
+    ;(globalThis as unknown as Record<string, unknown>).WebSocket = WebSocketPolyfill
+    return true
+  }
+  if (tryInstall()) return
+  let attempts = 0
+  const retry = () => {
+    if (tryInstall() || ++attempts >= 10) return
+    setTimeout(retry, 100)
+  }
+  setTimeout(retry, 0)
 }
