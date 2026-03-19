@@ -3,7 +3,7 @@ import Lynx
 import Network
 
 @objcMembers
-public final class LynxWebSocketModule: NSObject, LynxModule, URLSessionWebSocketDelegate {
+public final class LynxWebSocketModule: NSObject, LynxModule, LynxContextModule, URLSessionWebSocketDelegate {
 
     @objc public static var name: String { "LynxWebSocketModule" }
 
@@ -23,6 +23,12 @@ public final class LynxWebSocketModule: NSObject, LynxModule, URLSessionWebSocke
     private var taskToId: [URLSessionWebSocketTask: Int] = [:]
     private let queue = DispatchQueue(label: "com.tamertransports.websocket", qos: .default)
     private weak var lynxContext: LynxContext?
+
+    @objc public init(lynxContext context: LynxContext) {
+        super.init()
+        lynxContext = context
+        Self.shared = self
+    }
 
     @objc public init(param: Any) {
         super.init()

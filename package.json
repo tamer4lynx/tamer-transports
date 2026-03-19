@@ -1,6 +1,6 @@
 {
   "name": "@tamer4lynx/tamer-transports",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "publishConfig": { "access": "public", "tag": "prerelease" },
   "type": "module",
   "description": "Browser-compliant fetch, WebSocket, and EventSource (SSE) for Lynx with embedded native code.",
