@@ -10,7 +10,7 @@
     },
     "ios": {
       "podspecPath": "ios/tamertransports",
-      "moduleClassNames": ["LynxFetchModule", "LynxWebSocketModule"]
+      "moduleClassNames": ["LynxFetchModule", "TamerTransportsWebSocketModule"]
     }
   }
 }

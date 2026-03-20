@@ -1,9 +1,9 @@
 import Foundation
 import Lynx
-import Network
 
+@objc(TamerTransportsWebSocketModule)
 @objcMembers
-public final class LynxWebSocketModule: NSObject, LynxModule, LynxContextModule, URLSessionWebSocketDelegate {
+public final class TamerTransportsWebSocketModule: NSObject, LynxModule, LynxContextModule, URLSessionWebSocketDelegate {
 
     @objc public static var name: String { "LynxWebSocketModule" }
 
@@ -16,7 +16,7 @@ public final class LynxWebSocketModule: NSObject, LynxModule, LynxContextModule,
         ]
     }
 
-    public static weak var shared: LynxWebSocketModule?
+    public static weak var shared: TamerTransportsWebSocketModule?
 
     private var webSockets: [Int: URLSessionWebSocketTask] = [:]
     private var urlSessions: [Int: URLSession] = [:]
@@ -24,10 +24,14 @@ public final class LynxWebSocketModule: NSObject, LynxModule, LynxContextModule,
     private let queue = DispatchQueue(label: "com.tamertransports.websocket", qos: .default)
     private weak var lynxContext: LynxContext?
 
-    @objc public init(lynxContext context: LynxContext) {
+    @objc public init(lynxContext context: LynxContext, withParam param: Any) {
         super.init()
         lynxContext = context
         Self.shared = self
+    }
+
+    @objc public convenience init(lynxContext context: LynxContext) {
+        self.init(lynxContext: context, withParam: NSNull())
     }
 
     @objc public init(param: Any) {

@@ -2,6 +2,6 @@
 #define tamertransports_h
 
 #import <Foundation/Foundation.h>
-#import "LynxWebSocketModule-Bridging-Header.h"
+#import "TamerTransportsWebSocketModule-Bridging-Header.h"
 
 #endif /* tamertransports_h */
