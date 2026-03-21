@@ -1,5 +1,6 @@
 'background only'
 
+declare const lynx: { EventSource?: typeof globalThis.EventSource } | undefined
 declare const TextCodecHelper: { decode(buffer: ArrayBuffer): string } | undefined
 
 function decodeChunk(chunk: Uint8Array): string {
@@ -135,5 +136,10 @@ export class FetchEventSourcePolyfill extends EventTargetLike {
 export function installEventSourcePolyfill() {
   const g = typeof globalThis !== 'undefined' ? globalThis : (typeof self !== 'undefined' ? self : ({} as Record<string, unknown>))
   if (typeof (g as Record<string, unknown>).EventSource !== 'undefined') return
+  const fromLynx = typeof lynx !== 'undefined' && lynx?.EventSource
+  if (typeof fromLynx === 'function') {
+    ;(g as Record<string, unknown>).EventSource = fromLynx
+    return
+  }
   ;(g as Record<string, unknown>).EventSource = FetchEventSourcePolyfill
 }

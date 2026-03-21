@@ -7,6 +7,16 @@ declare const NativeModules: {
   }
 }
 
+declare const lynx: { fetch?: typeof globalThis.fetch } | undefined
+
+function ensureLynxFetchOnGlobal() {
+  if (typeof globalThis.fetch === 'function') return
+  const f = typeof lynx !== 'undefined' && lynx?.fetch
+  if (typeof f === 'function') {
+    ;(globalThis as unknown as Record<string, typeof globalThis.fetch>).fetch = f.bind(lynx) as typeof globalThis.fetch
+  }
+}
+
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer)
   let binary = ''
@@ -42,9 +52,39 @@ async function bodyToPayload(body: BodyInit | null): Promise<{ body?: string; bo
   return Promise.reject(new Error('Unsupported body type'))
 }
 
+function nativeFetchErrorToMessage(err: unknown): string {
+  if (err == null) return 'Request failed'
+  if (typeof err === 'string') return err || 'Request failed'
+  if (typeof err === 'number' || typeof err === 'boolean') return String(err)
+  if (typeof err === 'object') {
+    const o = err as Record<string, unknown>
+    const m = o.message
+    if (typeof m === 'string' && m) return m
+    const s = o.localizedDescription
+    if (typeof s === 'string' && s) return s
+    try {
+      return JSON.stringify(err)
+    } catch {
+      return String(err)
+    }
+  }
+  return String(err)
+}
+
+function toRejectError(e: unknown): Error {
+  if (e instanceof Error) return e
+  return new Error(nativeFetchErrorToMessage(e))
+}
+
 export function installFetchPolyfill() {
   const mod = NativeModules?.LynxFetchModule
-  if (!mod) return
+  if (!mod || typeof mod.request !== 'function') {
+    ensureLynxFetchOnGlobal()
+    return
+  }
+
+  const request = mod.request.bind(mod)
+  const cancel = typeof mod.cancel === 'function' ? mod.cancel.bind(mod) : undefined
 
   let nextRequestId = 1
 
@@ -76,17 +116,17 @@ export function installFetchPolyfill() {
 
     return new Promise((resolve, reject) => {
       const requestId = nextRequestId++
-      const onAbort = () => mod?.cancel?.(requestId)
+      const onAbort = () => cancel?.(requestId)
       opts.signal?.addEventListener?.('abort', onAbort)
       const cleanup = () => opts.signal?.removeEventListener?.('abort', onAbort)
 
       if (!stream) {
-        mod!.request(url, JSON.stringify(options), (resultJson: string) => {
+        request(url, JSON.stringify(options), (resultJson: string) => {
           try {
             const result = JSON.parse(resultJson)
-            if (result.error) {
+            if (result.error != null && result.error !== false && result.error !== '') {
               cleanup()
-              reject(new Error(result.error))
+              reject(new Error(nativeFetchErrorToMessage(result.error)))
               return
             }
             const bodyInit = result.bodyBase64 != null
@@ -101,7 +141,7 @@ export function installFetchPolyfill() {
             resolve(res)
           } catch (e) {
             cleanup()
-            reject(e)
+            reject(toRejectError(e))
           }
         })
         return
@@ -114,7 +154,7 @@ export function installFetchPolyfill() {
           controller = ctrl
         },
         cancel() {
-          mod?.cancel?.(requestId)
+          cancel?.(requestId)
           cleanup()
         },
       })
@@ -125,16 +165,17 @@ export function installFetchPolyfill() {
         requestId,
       }
 
-      mod!.request(url, JSON.stringify(streamOptions), (resultJson: string) => {
+      request(url, JSON.stringify(streamOptions), (resultJson: string) => {
         try {
           const result = JSON.parse(resultJson)
-          if (result.error) {
+          if (result.error != null && result.error !== false && result.error !== '') {
             cleanup()
+            const msg = nativeFetchErrorToMessage(result.error)
             if (!settled) {
               settled = true
-              reject(new Error(result.error))
+              reject(new Error(msg))
             } else {
-              controller?.error(new Error(result.error))
+              controller?.error(new Error(msg))
             }
             return
           }
@@ -180,7 +221,7 @@ export function installFetchPolyfill() {
           }
         } catch (e) {
           cleanup()
-          reject(e)
+          reject(toRejectError(e))
         }
       })
     })

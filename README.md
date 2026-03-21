@@ -39,6 +39,50 @@ es.onmessage = (e) => console.log(e.data)
 
 These replace the default implementations when the host does not provide them, enabling HMR, WebSocket, and SSE in Lynx native apps. **Not fully tested** — report issues on GitHub.
 
+## Lynx: background thread
+
+`fetch`, `WebSocket`, and `EventSource` must run on the **background** thread. Use them from `useEffect`, handlers, or other background-only paths. When you need an explicit directive (e.g. state updates after `fetch` in a custom hook), put **`'background only'`** as the first line of that function.
+
+### ReactLynx: WebSocket + state
+
+```tsx
+import { useEffect, useState } from '@lynx-js/react';
+import { WebSocket } from '@tamer4lynx/tamer-transports';
+
+export function App() {
+  const [text, setText] = useState('Hello');
+
+  useEffect(() => {
+    'background only';
+    let released = false;
+    const ws = new WebSocket('wss://example.com/socket');
+
+    ws.onmessage = (event) => {
+      if (released) return;
+      setText(String(event.data));
+    };
+
+    return () => {
+      released = true;
+      ws.onmessage = null;
+      try {
+        if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN) {
+          ws.close(1000, 'cleanup');
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+  }, []);
+
+  return (
+    <view>
+      <text>{text}</text>
+    </view>
+  );
+}
+```
+
 ## Platform
 
 Uses **lynx.ext.json**. Run `t4l link` after adding to your app.

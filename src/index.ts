@@ -44,42 +44,113 @@ if (globalThis.fetch) {
   } catch {}
 }
 
-// Export classes that read from globalThis at construction time
-// This ensures the polyfills are available even if they install asynchronously
-export const WebSocket: typeof globalThis.WebSocket = (() => {
-  const Impl = getWebSocketImpl()
-  if (Impl) return Impl
-  
-  // Return a stub class if WebSocket is not available
-  class WebSocketStub {
-    static readonly CONNECTING = 0
-    static readonly OPEN = 1
-    static readonly CLOSING = 2
-    static readonly CLOSED = 3
-    
-    constructor(url: string) {
-      throw new Error('WebSocket is not available. Make sure @tamer4lynx/tamer-transports is properly linked and native modules are registered.')
-    }
-  }
-  return WebSocketStub as unknown as typeof globalThis.WebSocket
-})()
+let warnedWebSocketUnavailable = false
+let warnedEventSourceUnavailable = false
 
-export const EventSource: typeof globalThis.EventSource = (() => {
-  const Impl = getEventSourceImpl()
-  if (Impl) return Impl
-  
-  // Return a stub class if EventSource is not available
-  class EventSourceStub {
-    static readonly CONNECTING = 0
-    static readonly OPEN = 1
-    static readonly CLOSED = 2
-    
-    constructor(url: string, eventSourceInitDict?: EventSourceInit) {
-      throw new Error('EventSource is not available. Make sure @tamer4lynx/tamer-transports is properly linked.')
+class WebSocketUnavailable {
+  static readonly CONNECTING = 0
+  static readonly OPEN = 1
+  static readonly CLOSING = 2
+  static readonly CLOSED = 3
+
+  readonly url: string
+  readyState = WebSocketUnavailable.CLOSED
+  onopen: (() => void) | null = null
+  onmessage: ((ev: { data: string | ArrayBuffer }) => void) | null = null
+  onerror: ((e: Error) => void) | null = null
+  onclose: ((ev: { code: number; reason: string }) => void) | null = null
+
+  constructor(url: string | URL) {
+    this.url = typeof url === 'string' ? url : url.href
+    if (!warnedWebSocketUnavailable) {
+      warnedWebSocketUnavailable = true
+      try {
+        console.warn(
+          '[tamer-transports] WebSocket is not available on this thread (e.g. main thread IFR). Use a background-only module for real connections.',
+        )
+      } catch {}
     }
   }
-  return EventSourceStub as unknown as typeof globalThis.EventSource
-})()
+
+  send(_data: string | ArrayBuffer) {}
+
+  close(_code = 1000, _reason = '') {}
+}
+
+class EventSourceUnavailable {
+  static readonly CONNECTING = 0
+  static readonly OPEN = 1
+  static readonly CLOSED = 2
+
+  readonly url: string
+  readyState = EventSourceUnavailable.CLOSED
+  onopen: ((ev: Event) => void) | null = null
+  onmessage: ((ev: MessageEvent) => void) | null = null
+  onerror: ((ev: Event) => void) | null = null
+
+  constructor(url: string | URL, _eventSourceInitDict?: EventSourceInit) {
+    this.url = typeof url === 'string' ? url : url.href
+    if (!warnedEventSourceUnavailable) {
+      warnedEventSourceUnavailable = true
+      try {
+        console.warn(
+          '[tamer-transports] EventSource is not available on this thread. Use a background-only module or lynx.EventSource when supported.',
+        )
+      } catch {}
+    }
+  }
+
+  close() {}
+  addEventListener() {}
+  removeEventListener() {}
+  dispatchEvent() {
+    return false
+  }
+}
+
+function createWebSocketExport(): typeof globalThis.WebSocket {
+  function WebSocket(
+    this: unknown,
+    url: string | URL,
+    protocols?: string | string[],
+  ): InstanceType<typeof globalThis.WebSocket> {
+    let Impl = getWebSocketImpl() as typeof globalThis.WebSocket | undefined
+    if ((Impl as unknown) === (WebSocket as unknown)) Impl = undefined
+    if (!Impl) {
+      return new WebSocketUnavailable(url) as unknown as InstanceType<typeof globalThis.WebSocket>
+    }
+    return new Impl(url as string, protocols as string | string[] | undefined)
+  }
+  WebSocket.CONNECTING = 0
+  WebSocket.OPEN = 1
+  WebSocket.CLOSING = 2
+  WebSocket.CLOSED = 3
+  return WebSocket as unknown as typeof globalThis.WebSocket
+}
+
+function createEventSourceExport(): typeof globalThis.EventSource {
+  function EventSource(
+    this: unknown,
+    url: string | URL,
+    eventSourceInitDict?: EventSourceInit,
+  ): InstanceType<typeof globalThis.EventSource> {
+    let Impl = getEventSourceImpl() as typeof globalThis.EventSource | undefined
+    if ((Impl as unknown) === (EventSource as unknown)) Impl = undefined
+    if (!Impl) {
+      return new EventSourceUnavailable(url, eventSourceInitDict) as unknown as InstanceType<
+        typeof globalThis.EventSource
+      >
+    }
+    return new Impl(url as string, eventSourceInitDict)
+  }
+  EventSource.CONNECTING = 0
+  EventSource.OPEN = 1
+  EventSource.CLOSED = 2
+  return EventSource as unknown as typeof globalThis.EventSource
+}
+
+export const WebSocket = createWebSocketExport()
+export const EventSource = createEventSourceExport()
 
 // Side-effect: make these available globally when module is imported
 if (typeof globalThis !== 'undefined') {

@@ -40,12 +40,31 @@ const CLOSED = 3
 const webSockets = new Map<number, WebSocketInstance>()
 let nextId = 1
 
+function lynxWebSocketModuleReady(mod: NonNullable<typeof NativeModules.LynxWebSocketModule>): boolean {
+  return (
+    typeof mod.connect === 'function' &&
+    typeof mod.send === 'function' &&
+    typeof mod.sendBinary === 'function' &&
+    typeof mod.close === 'function'
+  )
+}
+
 export function installWebSocketPolyfill() {
   function tryInstall() {
     const mod = NativeModules?.LynxWebSocketModule
-    if (!mod) return false
+    if (!mod || !lynxWebSocketModuleReady(mod)) return false
 
-  const bridge = lynx.getJSModule('GlobalEventEmitter')
+  let bridge: { addListener(e: string, fn: (ev: { payload?: string }) => void): void }
+  try {
+    bridge = lynx.getJSModule('GlobalEventEmitter')
+  } catch {
+    return false
+  }
+
+  const nativeConnect = mod.connect.bind(mod)
+  const nativeSend = mod.send.bind(mod)
+  const nativeSendBinary = mod.sendBinary.bind(mod)
+  const nativeClose = mod.close.bind(mod)
 
   bridge.addListener('websocket:open', (event: { payload?: string }) => {
     const { id } = JSON.parse(event.payload ?? '{}')
@@ -102,21 +121,21 @@ export function installWebSocketPolyfill() {
       this.id = nextId++
       this.url = url
       webSockets.set(this.id, this)
-      mod!.connect(url, this.id)
+      nativeConnect(url, this.id)
     }
 
     send(data: string | ArrayBuffer) {
       if (typeof data === 'string') {
-        mod!.send(this.id, data)
+        nativeSend(this.id, data)
       } else {
-        mod!.sendBinary(this.id, arrayBufferToBase64(data))
+        nativeSendBinary(this.id, arrayBufferToBase64(data))
       }
     }
 
     close(code = 1000, reason = 'Normal closure') {
       if (this.readyState === CONNECTING || this.readyState === OPEN) {
         this.readyState = CLOSING
-        mod!.close(this.id, code, reason)
+        nativeClose(this.id, code, reason)
       }
     }
   }
