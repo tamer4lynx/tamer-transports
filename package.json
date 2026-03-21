@@ -1,7 +1,10 @@
 {
   "name": "@tamer4lynx/tamer-transports",
-  "version": "0.0.5",
-  "publishConfig": { "access": "public", "tag": "prerelease" },
+  "version": "0.0.6",
+  "publishConfig": {
+    "access": "public",
+    "tag": "prerelease"
+  },
   "type": "module",
   "description": "Browser-compliant fetch, WebSocket, and EventSource (SSE) for Lynx with embedded native code.",
   "main": "dist/src/index.js",
@@ -18,8 +21,16 @@
       "default": "./dist/src/lynx.js"
     }
   },
-  "files": ["dist", "android/src", "android/build.gradle.kts", "ios", "lynx.ext.json"],
-  "lynx": { "ext": "lynx.ext.json" },
+  "files": [
+    "dist",
+    "android/src",
+    "android/build.gradle.kts",
+    "ios",
+    "lynx.ext.json"
+  ],
+  "lynx": {
+    "ext": "lynx.ext.json"
+  },
   "scripts": {
     "build": "tsc",
     "prepare": "tsc"
@@ -30,9 +41,14 @@
   "engines": {
     "node": ">=18"
   },
-  "repository": { "type": "git", "url": "https://github.com/tamer4lynx/tamer-transports.git" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tamer4lynx/tamer-transports.git"
+  },
   "homepage": "https://github.com/tamer4lynx/tamer-transports#readme",
-  "bugs": { "url": "https://github.com/tamer4lynx/tamer-transports/issues" },
+  "bugs": {
+    "url": "https://github.com/tamer4lynx/tamer-transports/issues"
+  },
   "author": "Nanofuxion",
   "license": "MIT"
 }
