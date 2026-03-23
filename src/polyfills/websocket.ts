@@ -2,7 +2,8 @@
 
 declare const lynx: { getJSModule(id: string): { addListener(e: string, fn: (ev: { payload?: string }) => void): void } }
 declare const NativeModules: {
-  LynxWebSocketModule?: {
+  /** Lynx engine built-in uses connect(url, protocols, options, id) — do not use for this polyfill. */
+  TamerTransportsWebSocketModule?: {
     connect(url: string, id: number): void
     send(id: number, message: string): void
     sendBinary(id: number, base64: string): void
@@ -40,7 +41,9 @@ const CLOSED = 3
 const webSockets = new Map<number, WebSocketInstance>()
 let nextId = 1
 
-function lynxWebSocketModuleReady(mod: NonNullable<typeof NativeModules.LynxWebSocketModule>): boolean {
+function tamerWebSocketModuleReady(
+  mod: NonNullable<typeof NativeModules.TamerTransportsWebSocketModule>,
+): boolean {
   return (
     typeof mod.connect === 'function' &&
     typeof mod.send === 'function' &&
@@ -51,8 +54,8 @@ function lynxWebSocketModuleReady(mod: NonNullable<typeof NativeModules.LynxWebS
 
 export function installWebSocketPolyfill() {
   function tryInstall() {
-    const mod = NativeModules?.LynxWebSocketModule
-    if (!mod || !lynxWebSocketModuleReady(mod)) return false
+    const mod = NativeModules?.TamerTransportsWebSocketModule
+    if (!mod || !tamerWebSocketModuleReady(mod)) return false
 
   let bridge: { addListener(e: string, fn: (ev: { payload?: string }) => void): void }
   try {

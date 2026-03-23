@@ -10,6 +10,8 @@ npm install @tamer4lynx/tamer-transports
 
 Add to your app's dependencies and run `t4l link`. **Required for HMR and WebSocket** in native Lynx apps.
 
+The WebSocket native bridge registers as **`TamerTransportsWebSocketModule`** (not `LynxWebSocketModule`), so it does not collide with the Lynx engine’s built-in `LynxWebSocketModule`, which uses a different `connect` signature.
+
 ## Usage
 
 ```ts

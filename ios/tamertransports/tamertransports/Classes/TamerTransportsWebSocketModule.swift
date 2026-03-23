@@ -5,7 +5,7 @@ import Lynx
 @objcMembers
 public final class TamerTransportsWebSocketModule: NSObject, LynxModule, LynxContextModule, URLSessionWebSocketDelegate {
 
-    @objc public static var name: String { "LynxWebSocketModule" }
+    @objc public static var name: String { "TamerTransportsWebSocketModule" }
 
     @objc public static var methodLookup: [String: String] {
         [

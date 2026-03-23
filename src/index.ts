@@ -157,11 +157,13 @@ if (typeof globalThis !== 'undefined') {
   if (!globalThis.fetch) {
     (globalThis as any).fetch = fetch
   }
-  if (!globalThis.WebSocket) {
-    (globalThis as any).WebSocket = WebSocket
-  }
   if (!globalThis.EventSource) {
     (globalThis as any).EventSource = EventSource
   }
+  setTimeout(() => {
+    if (!globalThis.WebSocket) {
+      (globalThis as any).WebSocket = WebSocket
+    }
+  }, 1500)
 }
 

@@ -17,13 +17,13 @@ import okio.ByteString
 import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
 
-class LynxWebSocketModule(context: Context) : LynxModule(context) {
+class TamerTransportsWebSocketModule(context: Context) : LynxModule(context) {
 
     private val client = OkHttpClient()
     private val webSockets = ConcurrentHashMap<Int, WebSocket>()
 
     companion object {
-        private const val TAG = "LynxWebSocketModule"
+        private const val TAG = "TamerTransportsWebSocket"
     }
 
     @LynxMethod
